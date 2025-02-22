@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 import pybreaker
-import redis  # <- Agregar Redis
+import redis
 from fastapi import FastAPI
 from config import SERVICE_B_URL, SERVICE_C_URL, REDIS_HOST, REDIS_PORT
 from logging_config import setup_logging
@@ -15,7 +15,7 @@ logger = setup_logging()
 # Configurar Redis
 redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 
-# Configurar Circuit Breaker (Falla tras 3 intentos, se recupera en 10s)
+# Configurar Circuit Breaker
 circuit_breaker = pybreaker.CircuitBreaker(fail_max=3, reset_timeout=10)
 
 # Métricas Prometheus
@@ -29,30 +29,24 @@ app = FastAPI()
 Instrumentator().instrument(app).expose(app)
 
 # Configuración del tiempo de caché en Redis
-CACHE_TTL = 20  # ⏳ Ajusta el tiempo de caché en segundos
+CACHE_TTL = 20  # Segundos
 
-@app.get("/")
+@app.get("/api/v1/consul")
 async def call_service_b():
     try:
         logger.info("Verificando si la respuesta está en caché...")
-
-        # 1️⃣ Buscar respuesta en caché
         cached_response = redis_client.get("service_b_response")
         if cached_response:
             logger.info("✅ Usando respuesta cacheada de Redis.")
-            cache_hits.inc()  # 📊 Incrementar métrica de uso de caché
+            cache_hits.inc()
             return {"message": f"Respuesta cacheada de B: {cached_response}"}
 
         logger.info("🚀 Llamando a Service B...")
-        
-        # 2️⃣ Llamar a Service B si no hay caché
         response = circuit_breaker.call(requests.get, SERVICE_B_URL, timeout=2)
 
-        # 3️⃣ Si Service B devuelve error 500, activar Circuit Breaker
         if response.status_code >= 500:
             raise pybreaker.CircuitBreakerError(f"Service B devolvió {response.status_code}")
 
-        # 4️⃣ Guardar respuesta en caché con manejo de errores de Redis
         try:
             redis_client.setex("service_b_response", CACHE_TTL, response.text)
             logger.info(f"💾 Respuesta de B almacenada en caché ({CACHE_TTL}s).")
@@ -63,7 +57,7 @@ async def call_service_b():
 
     except (requests.exceptions.RequestException, pybreaker.CircuitBreakerError) as e:
         logger.warning(f"⚡ Circuit Breaker activado: {str(e)}. Redirigiendo a Service C.")
-        circuit_breaker_activations.inc()  # 📊 Incrementar métrica de activaciones
+        circuit_breaker_activations.inc()
 
         try:
             response = requests.get(SERVICE_C_URL, timeout=2)
@@ -75,4 +69,8 @@ async def call_service_b():
     except Exception as e:
         logger.error(f"🔥 Error inesperado en Service A: {str(e)}")
         return {"error": "Fallo inesperado en Service A"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "A"}
 
