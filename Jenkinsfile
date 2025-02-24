@@ -1,10 +1,12 @@
-// Pipeline - v1.0.1
+
+// Pipeline - v1.0.0
 pipeline {
     agent { label 'jenkins-jenkins-agent' }
 
     environment {
         IMAGE_NAME = "d4rkghost47/python-circuit-svc-1"
         REGISTRY = "https://index.docker.io/v1/"
+        SHORT_SHA = "${GIT_COMMIT[0..7]}"
         RECIPIENTS = "reynosojose2005@gmail.com"
         GIT_MANIFESTS_REPO = "git@github.com:evil-cloud/resillience-poc-service-a-k8s.git"
         GIT_MANIFESTS_BRANCH = "main"
@@ -13,38 +15,43 @@ pipeline {
     stages {
         stage('Checkout Code') {
             steps {
-                script {
-                    checkout scm
-                    env.SHORT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                }
+                checkout scm
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    echo "🐳 Construyendo imagen con SHA: ${env.SHORT_SHA}"
-                    sh """
-                    docker build -t ${IMAGE_NAME}:${env.SHORT_SHA} .
-                    docker tag ${IMAGE_NAME}:${env.SHORT_SHA} ${IMAGE_NAME}:latest
-                    """
-                }
-            }
-        }
-
-        stage('Push Docker Image') {
-            steps {
-                script {
-                    withCredentials([string(credentialsId: 'docker-token', variable: 'DOCKER_TOKEN')]) {
+                container('dind') {
+                    script {
+                        echo "🐳 Construyendo imagen con SHA: ${env.SHORT_SHA}"
                         sh """
-                        echo "$DOCKER_TOKEN" | docker login -u "d4rkghost47" --password-stdin
-                        docker push ${IMAGE_NAME}:${env.SHORT_SHA}
-                        docker push ${IMAGE_NAME}:latest
+                        docker build -t ${IMAGE_NAME}:${env.SHORT_SHA} .
+                        docker tag ${IMAGE_NAME}:${env.SHORT_SHA} ${IMAGE_NAME}:latest
                         """
                     }
                 }
             }
         }
+
+
+        stage('Push Docker Image') {
+            steps {
+                container('dind') {
+                    script {
+                        withCredentials([string(credentialsId: 'docker-token', variable: 'DOCKER_TOKEN')]) {
+                            sh """
+                            echo "$DOCKER_TOKEN" | docker login -u "d4rkghost47" --password-stdin
+                            docker push ${IMAGE_NAME}:${env.SHORT_SHA}
+                            docker push ${IMAGE_NAME}:latest
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+
+
 
         stage('Update Helm/K8s Repo') {
             steps {
@@ -75,6 +82,6 @@ pipeline {
                 }
             }
         }
+
     }
 }
-
