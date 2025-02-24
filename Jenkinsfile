@@ -1,4 +1,4 @@
-// Pipeline - v1.0.2
+// Pipeline - v1.0.1
 pipeline {
     agent { label 'jenkins-jenkins-agent' }
 
@@ -71,36 +71,14 @@ pipeline {
                             exit 1
                         fi
 
-                        echo "✏️ Antes de actualizar values.yaml:"
-                        cat values.yaml
-
-                        # Verificar si yq está instalado, si no, instalarlo
-                        if ! command -v yq &> /dev/null; then
-                            echo "🔧 'yq' no encontrado. Intentando instalar..."
-                            if command -v wget &> /dev/null; then
-                                echo "📥 Usando wget..."
-                                wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-                            elif command -v curl &> /dev/null; then
-                                echo "📥 Usando curl..."
-                                curl -sL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq
-                            else
-                                echo "❌ ERROR: No se pudo instalar 'yq' porque ni wget ni curl están disponibles."
-                                exit 1
-                            fi
-                            chmod +x /usr/local/bin/yq
-                        fi
-
                         echo "✏️ Actualizando el values.yaml con la nueva imagen..."
-                        yq e '.image.tag = "${env.SHORT_SHA}"' -i values.yaml
-
-                        echo "✏️ Después de actualizar values.yaml:"
-                        cat values.yaml
+                        sed -i "s|tag: .*|tag: ${env.SHORT_SHA}|g" values.yaml
 
                         echo "📤 Haciendo commit y push..."
                         git config user.email "ci-bot@example.com"
                         git config user.name "CI/CD Bot"
                         git add values.yaml
-                        git commit -m "🚀 Actualizando imagen a ${env.SHORT_SHA}" || echo "⚠️ No hay cambios en values.yaml, omitiendo commit."
+                        git commit -m "🚀 Actualizando imagen a ${env.SHORT_SHA}"
                         GIT_SSH_COMMAND="ssh -i \$SSH_KEY -o StrictHostKeyChecking=no" git push --set-upstream origin "\$GIT_MANIFESTS_BRANCH"
                         """
                     }
