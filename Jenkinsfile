@@ -74,6 +74,22 @@ pipeline {
                         echo "✏️ Antes de actualizar values.yaml:"
                         cat values.yaml
 
+                        # Verificar si yq está instalado, si no, instalarlo
+                        if ! command -v yq &> /dev/null; then
+                            echo "🔧 'yq' no encontrado. Intentando instalar..."
+                            if command -v wget &> /dev/null; then
+                                echo "📥 Usando wget..."
+                                wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+                            elif command -v curl &> /dev/null; then
+                                echo "📥 Usando curl..."
+                                curl -sL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq
+                            else
+                                echo "❌ ERROR: No se pudo instalar 'yq' porque ni wget ni curl están disponibles."
+                                exit 1
+                            fi
+                            chmod +x /usr/local/bin/yq
+                        fi
+
                         echo "✏️ Actualizando el values.yaml con la nueva imagen..."
                         yq e '.image.tag = "${env.SHORT_SHA}"' -i values.yaml
 
@@ -93,4 +109,3 @@ pipeline {
         }
     }
 }
-
