@@ -1,5 +1,4 @@
-
-// Pipeline - v1.0.0
+// Pipeline - v1.0.1
 pipeline {
     agent { label 'jenkins-jenkins-agent' }
 
@@ -10,6 +9,7 @@ pipeline {
         RECIPIENTS = "reynosojose2005@gmail.com"
         GIT_MANIFESTS_REPO = "git@github.com:evil-cloud/resillience-poc-service-a-k8s.git"
         GIT_MANIFESTS_BRANCH = "main"
+        GIT_MANIFESTS_REPO_NAME = "resillience-poc-service-a-k8s" // Repositorio sin prefijo de URL
     }
 
     stages {
@@ -33,14 +33,13 @@ pipeline {
             }
         }
 
-
         stage('Push Docker Image') {
             steps {
                 container('dind') {
                     script {
                         withCredentials([string(credentialsId: 'docker-token', variable: 'DOCKER_TOKEN')]) {
                             sh """
-                            echo "$DOCKER_TOKEN" | docker login -u "d4rkghost47" --password-stdin
+                            echo "\$DOCKER_TOKEN" | docker login -u "d4rkghost47" --password-stdin
                             docker push ${IMAGE_NAME}:${env.SHORT_SHA}
                             docker push ${IMAGE_NAME}:latest
                             """
@@ -50,9 +49,6 @@ pipeline {
             }
         }
 
-
-
-
         stage('Update Helm/K8s Repo') {
             steps {
                 script {
@@ -60,13 +56,20 @@ pipeline {
                         sh """
                         echo "📂 Configurando ssh-agent para clonar el repositorio..."
                         eval \$(ssh-agent -s)
-                        chmod 600 $SSH_KEY
-                        ssh-add $SSH_KEY
+                        chmod 600 "\$SSH_KEY"
+                        ssh-add "\$SSH_KEY"
 
                         echo "📂 Clonando repo de manifiestos..."
-                        rm -rf service-a-k8s
-                        GIT_SSH_COMMAND="ssh -i $SSH_KEY -o StrictHostKeyChecking=no" git clone ${GIT_MANIFESTS_REPO}
-                        cd service-a-k8s
+                        rm -rf "\$GIT_MANIFESTS_REPO_NAME"
+                        GIT_SSH_COMMAND="ssh -i \$SSH_KEY -o StrictHostKeyChecking=no" git clone "\$GIT_MANIFESTS_REPO"
+
+                        # Verificar si el directorio se creó correctamente
+                        if [ -d "\$GIT_MANIFESTS_REPO_NAME" ]; then
+                            cd "\$GIT_MANIFESTS_REPO_NAME"
+                        else
+                            echo "❌ ERROR: No se pudo clonar el repositorio. Abortando..."
+                            exit 1
+                        fi
 
                         echo "✏️ Actualizando el values.yaml con la nueva imagen..."
                         sed -i "s|tag: .*|tag: ${env.SHORT_SHA}|g" values.yaml
@@ -76,12 +79,11 @@ pipeline {
                         git config user.name "CI/CD Bot"
                         git add values.yaml
                         git commit -m "🚀 Actualizando imagen a ${env.SHORT_SHA}"
-                        GIT_SSH_COMMAND="ssh -i $SSH_KEY -o StrictHostKeyChecking=no" git push --set-upstream origin ${GIT_MANIFESTS_BRANCH}
+                        GIT_SSH_COMMAND="ssh -i \$SSH_KEY -o StrictHostKeyChecking=no" git push --set-upstream origin "\$GIT_MANIFESTS_BRANCH"
                         """
                     }
                 }
             }
         }
-
     }
 }
