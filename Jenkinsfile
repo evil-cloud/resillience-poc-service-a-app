@@ -32,7 +32,7 @@ pipeline {
                             sh '''
                             sonar-scanner \
                                 -Dsonar.projectKey=${SONAR_PROJECT} \
-                                -Dsonar.sources=src \
+                                -Dsonar.sources=app \
                                 -Dsonar.host.url=${SONAR_HOST} \
                                 -Dsonar.login=$SONAR_TOKEN
                             '''
